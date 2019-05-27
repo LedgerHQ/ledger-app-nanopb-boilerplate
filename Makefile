@@ -26,15 +26,15 @@ APPVERSION_M=1
 APPVERSION_N=0
 APPVERSION_P=0
 APPVERSION=$(APPVERSION_M).$(APPVERSION_N).$(APPVERSION_P)
-APPNAME = "Boilerplate"
+APPNAME = "nanopb"
 
 DEFINES += $(DEFINES_LIB)
 
 
 ifeq ($(TARGET_NAME),TARGET_NANOX)
-	ICONNAME=icons/nanox_app_boilerplate.gif
+	ICONNAME=icons/nanox_app_nanopb.gif
 else
-	ICONNAME=icons/nanos_app_boilerplate.gif
+	ICONNAME=icons/nanos_app_nanopb.gif
 endif
 
 
@@ -82,7 +82,7 @@ DEFINES   	  += IO_SEPROXYHAL_BUFFER_SIZE_B=128
 endif
 
 # Enabling debug PRINTF
-DEBUG = 0
+DEBUG = 1
 ifneq ($(DEBUG),0)
 
         ifeq ($(TARGET_NAME),TARGET_NANOX)
@@ -147,7 +147,7 @@ release: all
 	export APP_LOAD_PARAMS_EVALUATED="$(shell printf '\\"%s\\" ' $(APP_LOAD_PARAMS))"; \
 	cat load-template.sh | envsubst > load.sh
 	chmod +x load.sh
-	tar -zcf boilerplate-ledger-app-$(APPVERSION).tar.gz load.sh bin/app.hex
+	tar -zcf nanopb-ledger-app-$(APPVERSION).tar.gz load.sh bin/app.hex
 	rm load.sh
 
 # import generic rules from the sdk
@@ -159,4 +159,4 @@ dep/%.d: %.c Makefile
 
 
 listvariants:
-	@echo VARIANTS COIN boilerplate
+	@echo VARIANTS COIN nanopb

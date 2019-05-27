@@ -67,7 +67,7 @@ static const ux_menu_entry_t menu_about[] = {
 
 static const ux_menu_entry_t menu_main[] = {
     //{NULL, NULL, 0, &NAME3(C_nanos_badge_, CHAINID, ), "Use wallet to", "view accounts", 33, 12},
-    {NULL, NULL, 0, NULL, "Boilerplate", "ready", 0, 0},
+    {NULL, NULL, 0, NULL, "nanopb", "ready", 0, 0},
     {menu_settings, NULL, 0, NULL, "Settings", NULL, 0, 0},
     {menu_about, NULL, 0, NULL, "About", NULL, 0, 0},
     {NULL, os_sched_exit, 0, &C_icon_dashboard, "Quit app", NULL, 50, 29},
@@ -190,7 +190,7 @@ UX_STEP_NOCB(
     pnn, 
     {
       &C_boilerplate_logo,
-      "Boilerplate",
+      "nanopb",
       "is ready",
     });
 UX_STEP_VALID(

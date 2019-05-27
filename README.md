@@ -1,7 +1,7 @@
-# Ledger boilerplate app
+# Ledger nanopb app
 
 ## Overview
-This app is a boilerplate for a Nano S/X app.
+This app is a nanopb for a Nano S/X app.
 It does very little, and just expose a minimal API (get_app_config, get_address). 
 
 ## Building and installing
@@ -43,4 +43,4 @@ python test_exemple.py --account_number 12345
 ```
 
 ## Documentation
-This follows the specification available in the [`api.asc`](https://github.com/LedgerHQ/ledger-app-boilerplate/blob/master/doc/api.asc).
+This follows the specification available in the [`api.asc`](https://github.com/LedgerHQ/ledger-app-nanopb/blob/master/doc/api.asc).
