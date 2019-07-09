@@ -1,8 +1,8 @@
+#include "utils.h"
 #include "os.h"
 #include "cx.h"
 #include <stdbool.h>
 #include <stdlib.h>
-#include "utils.h"
 #include "menu.h"
 
 #define ACCOUNT_ADDRESS_PREFIX 1

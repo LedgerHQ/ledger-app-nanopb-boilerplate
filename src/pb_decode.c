@@ -13,15 +13,11 @@
     #define checkreturn __attribute__((warn_unused_result))
 #endif
 
-#ifdef OS_IO_SEPROXYHAL
-#include "os.h"
-#else
-#define PIC(x) x
-#endif
-
 #include "pb.h"
 #include "pb_decode.h"
 #include "pb_common.h"
+
+#include "os.h"
 
 /**************************************
  * Declarations internal to this file *
@@ -33,7 +29,7 @@ static bool checkreturn buf_read(pb_istream_t *stream, pb_byte_t *buf, size_t co
 static bool checkreturn read_raw_value(pb_istream_t *stream, pb_wire_type_t wire_type, pb_byte_t *buf, size_t *size);
 static bool checkreturn decode_static_field(pb_istream_t *stream, pb_wire_type_t wire_type, pb_field_iter_t *iter);
 static bool checkreturn decode_callback_field(pb_istream_t *stream, pb_wire_type_t wire_type, pb_field_iter_t *iter);
-static bool checkreturn decode_field(pb_istream_t *stream, pb_wire_type_t wire_type, pb_field_iter_t *iter);
+static bool inline checkreturn decode_field(pb_istream_t *stream, pb_wire_type_t wire_type, pb_field_iter_t *iter) __attribute__((no_instrument_function));
 static void iter_from_extension(pb_field_iter_t *iter, pb_extension_t *extension);
 static bool checkreturn default_extension_decoder(pb_istream_t *stream, pb_extension_t *extension, uint32_t tag, pb_wire_type_t wire_type);
 static bool checkreturn decode_extension(pb_istream_t *stream, uint32_t tag, pb_wire_type_t wire_type, pb_field_iter_t *iter);
@@ -41,7 +37,7 @@ static bool checkreturn find_extension_field(pb_field_iter_t *iter);
 static void pb_field_set_to_default(pb_field_iter_t *iter);
 static void pb_message_set_to_defaults(const pb_field_t fields[], void *dest_struct);
 static bool checkreturn pb_dec_varint(pb_istream_t *stream, const pb_field_t *field, void *dest);
-static bool checkreturn pb_decode_varint32_eof(pb_istream_t *stream, uint32_t *dest, bool *eof);
+static bool inline checkreturn pb_decode_varint32_eof(pb_istream_t *stream, uint32_t *dest, bool *eof) __attribute__((no_instrument_function));
 static bool checkreturn pb_dec_uvarint(pb_istream_t *stream, const pb_field_t *field, void *dest);
 static bool checkreturn pb_dec_svarint(pb_istream_t *stream, const pb_field_t *field, void *dest);
 static bool checkreturn pb_dec_fixed32(pb_istream_t *stream, const pb_field_t *field, void *dest);
@@ -66,7 +62,7 @@ static void pb_release_single_field(const pb_field_iter_t *iter);
 #define pb_int64_t int64_t
 #define pb_uint64_t uint64_t
 #endif
-uint64_t val2;
+
 /* --- Function pointers to field decoders ---
  * Order in the array must match pb_action_t LTYPE numbering.
  */
@@ -84,13 +80,257 @@ static const pb_decoder_t PB_DECODERS[PB_LTYPES_COUNT] = {
     &pb_dec_fixed_length_bytes
 };
 
+extern void _ebss;
+extern void _estack;
+int G_depth;
+int last_stack_left;
+typedef struct addr_to_fname_s {
+    const void* const addr;
+    const char* const name;
+} addr_to_fname_t;
+
+static bool checkreturn allocate_field(pb_istream_t *stream, void *pData, size_t data_size, size_t array_size);
+static bool checkreturn pb_release_union_field(pb_istream_t *stream, pb_field_iter_t *iter);
+static void pb_release_single_field(const pb_field_iter_t *iter);
+static void initialize_pointer_field(void *pItem, pb_field_iter_t *iter);
+static bool checkreturn inline decode_pointer_field(pb_istream_t *stream, pb_wire_type_t wire_type, pb_field_iter_t *iter) __attribute__((no_instrument_function));
+static bool checkreturn pb_readbyte(pb_istream_t *stream, pb_byte_t *buf);
+
+const addr_to_fname_t addr_to_fnames[] = {
+    { pb_readbyte, "pb_readbyte" },
+    { initialize_pointer_field, "initialize_pointer_field" },
+    { decode_pointer_field, "decode_pointer_field" },
+    { allocate_field, "allocate_field" },
+    { pb_release_union_field, "pb_release_union_field" },
+    { pb_release_single_field, "pb_release_single_field" },
+    { pb_decode, "pb_decode" },
+    { pb_message_set_to_defaults, "pb_message_set_to_defaults" },
+    { pb_decode_noinit, "pb_decode_noinit" },
+    { buf_read, "buf_read" },
+    { read_raw_value, "read_raw_value" },
+    { decode_static_field, "decode_static_field" },
+    { decode_callback_field, "decode_callback_field" },
+    { decode_field, "decode_field" },
+    { iter_from_extension, "iter_from_extension" },
+    { default_extension_decoder, "default_extension_decoder" },
+    { decode_extension, "decode_extension" },
+    { find_extension_field, "find_extension_field" },
+    { pb_field_set_to_default, "pb_field_set_to_default" },
+    { pb_message_set_to_defaults, "pb_message_set_to_defaults" },
+    { pb_dec_varint, "pb_dec_varint" },
+    { pb_decode_varint32_eof, "pb_decode_varint32_eof" },
+    { pb_dec_uvarint, "pb_dec_uvarint" },
+    { pb_dec_svarint, "pb_dec_svarint" },
+    { pb_dec_fixed32, "pb_dec_fixed32" },
+    { pb_dec_fixed64, "pb_dec_fixed64" },
+    { pb_dec_bytes, "pb_dec_bytes" },
+    { pb_dec_string, "pb_dec_string" },
+    { pb_dec_submessage, "pb_dec_submessage" },
+    { pb_dec_fixed_length_bytes, "pb_dec_fixed_length_bytes" },
+    { pb_skip_varint, "pb_skip_varint" },
+    { pb_skip_string, "pb_skip_string" },
+    { pb_decode_delimited, "pb_decode_delimited" },
+    { pb_decode_delimited_noinit, "pb_decode_delimited_noinit" },
+    { pb_decode_nullterminated, "pb_decode_nullterminated" },
+#ifdef PB_ENABLE_MALLOC
+    { pb_release, "pb_release" },
+#endif
+    { pb_istream_from_buffer, "pb_istream_from_buffer" },
+    { pb_read, "pb_read" },
+    { pb_decode_tag, "pb_decode_tag" },
+    { pb_skip_field, "pb_skip_field" },
+    // { pb_decode_varint, "pb_decode_varint" },
+    { pb_decode_varint32, "pb_decode_varint32" },
+    { pb_decode_svarint, "pb_decode_svarint" },
+    { pb_decode_fixed32, "pb_decode_fixed32" },
+    { pb_make_string_substream, "pb_make_string_substream" },
+    { pb_close_string_substream, "pb_close_string_substream" },
+    { decode_pointer_field, "decode_pointer_field" },
+    { decode_callback_field, "decode_callback_field" }
+};
+
+const char* addr_to_fname(void* func) __attribute__((no_instrument_function));
+const char* addr_to_fname(void* func){
+    for(int i = 0; i < sizeof(addr_to_fnames)/sizeof(*addr_to_fnames); i++){
+        if(PIC(addr_to_fnames[i].addr) == func){
+            return (const char*)(PIC(addr_to_fnames[i].name));
+        }
+    }
+    return "";
+}
+
+void __cyg_profile_func_enter(void *this_fn, void *call_site) __attribute__((no_instrument_function));
+void __cyg_profile_func_enter( void *func, void *callsite )
+{
+    const char* fname = addr_to_fname(func);
+    for(int i = 0; i < G_depth; i++){
+        PRINTF(" ");
+    }
+    PRINTF("-> %p '%s' [from %p], STACK %p, left: %d\n", func, fname, callsite, &fname, ((void*)&fname) - &_ebss); //, last_stack_left - (((void*)&fname) - &_ebss));
+    last_stack_left = ((void*)&fname) - &_ebss;
+    G_depth++;
+}
+void __cyg_profile_func_exit(void *this_fn, void *call_site) __attribute__((no_instrument_function));
+void __cyg_profile_func_exit( void *func, void *callsite )
+{
+    const char* fname = addr_to_fname(func);
+    // last_stack_left = ((void*)&fname) - &_ebss;
+    G_depth--;
+    for(int i = 0; i < G_depth; i++){
+        PRINTF(" ");
+    }
+    PRINTF("<- %p '%s' [from %p], left: %d\n", func, fname, callsite, ((void*)&fname) - &_ebss);
+    // last_stack_left = ((void*)&fname) - &_ebss;
+}
+
+/*******************************************************
+ * Ledger's APDU pb_istream_from_apdu_t implementation *
+ *******************************************************/
+#define OFFSET_P1 2
+#define OFFSET_LC 4
+#define OFFSET_DATA 5
+#define P1_FIRST 0x00
+#define P1_NEXT 0x80
+
+#define MAX_FETCH_ATTEMPTS 10
+
+#define ERR_PB_READ_IS_TOO_BIG 0x6002
+#define ERR_NOT_ENOUGH_BYTES_RECEIVED 0x6003
+#define ERR_BUFFER_TOO_SMALL 0x6005
+#define ERR_WRONG_MESSAGE_SIZE 0x6006
+#define ERR_WRONG_PARAMETER 0x6007
+
+void inline fetch_new_apdu(pb_istream_from_apdu_ctx_t *state) __attribute__((no_instrument_function));
+
+
+void fetch_new_apdu(pb_istream_from_apdu_ctx_t *state){
+    
+    unsigned int rx;
+    G_io_apdu_buffer[0] = 0x90;
+    G_io_apdu_buffer[1] = 0x00;
+    rx = io_exchange(CHANNEL_APDU, 2);
+
+    if(G_io_apdu_buffer[OFFSET_P1] != P1_NEXT){
+        THROW(ERR_WRONG_PARAMETER);
+    }
+    else if(state->bytes_stored + G_io_apdu_buffer[OFFSET_LC] > sizeof(state->data)){
+        PRINTF("ERR_BUFF_TOO_SMALL: %d %d\n", state->bytes_stored, G_io_apdu_buffer[OFFSET_LC]);
+        THROW(ERR_BUFFER_TOO_SMALL);
+    }
+
+    state->total_received += G_io_apdu_buffer[OFFSET_LC];
+
+    if (state->total_received > state->total_size)
+    {
+        PRINTF("total_rec: %d total_size %d\n", state->total_received , state->total_size);
+        THROW(ERR_WRONG_MESSAGE_SIZE);
+    }
+
+}
+
+bool checkreturn apdu_read(pb_istream_t *stream, pb_byte_t *buf, size_t count)
+{
+    pb_istream_from_apdu_ctx_t *state;
+    uint16_t bytes_not_read_yet;
+    uint8_t fetch_attempts;
+    const pb_byte_t *source;
+    
+    if(count > MAX_PB_ELEMENT_SIZE){
+        THROW(ERR_PB_READ_IS_TOO_BIG);
+    }
+
+    state = (pb_istream_from_apdu_ctx_t*)stream->state;
+
+    bytes_not_read_yet = state->bytes_stored-state->read_offset;
+
+    PRINTF("read: %d readable: %d stored %d\n", count, bytes_not_read_yet, state->bytes_stored);
+
+    /* not enough data has been received and deciphered, we fetch a new apdu or stop the s
+    tream if the last apdu was already received*/
+    if(count > bytes_not_read_yet){
+        // shift data to the beginning of the buffer
+        os_memmove(state->data, state->data+state->read_offset, state->bytes_stored - state->read_offset);
+        state->bytes_stored = bytes_not_read_yet;
+        state->read_offset = 0;
+
+        PRINTF("SHIFT LEFT: available: %d\n", bytes_not_read_yet);
+
+        // loop over apdu fetching while there's not enough bytes stored to feed the amount requested
+        fetch_attempts = 0;
+        while(count > bytes_not_read_yet){
+
+            if (++fetch_attempts > MAX_FETCH_ATTEMPTS)
+            {
+                THROW(ERR_NOT_ENOUGH_BYTES_RECEIVED);
+            }
+            else if(state->total_received == state->total_size){
+                // weverything has been received, signal to nanopb that it's time to end decoding
+                stream->bytes_left = 0;
+                return false;
+            }
+
+            fetch_new_apdu(state);
+
+            os_memmove(state->data + state->bytes_stored, G_io_apdu_buffer + OFFSET_DATA, G_io_apdu_buffer[OFFSET_LC]);
+
+            bytes_not_read_yet = state->bytes_stored - state->read_offset;
+
+        }
+    }
+    
+    // extract data to output buffer
+    source = (const pb_byte_t*)state->data + state->read_offset;
+    state->read_offset += count;
+    
+    if (buf != NULL)
+    {
+        for (uint16_t i = 0; i < count; i++)
+            buf[i] = source[i];
+    }
+    
+    return true;
+}
+
+/*
+ Returns a nanopb input stream handler that feeds data from APDUs
+ ctx: istream state that stores information about io context
+ init_buffer: initialized the stream with some data (can be set to NULL)
+ init_buffer_size: length of init_buffer
+ total_buffer_size: total length of the message to receive
+*/
+pb_istream_t pb_istream_from_apdu(pb_istream_from_apdu_ctx_t* ctx, uint8_t* init_buffer, uint8_t init_buffer_size, uint16_t total_buffer_size)
+{
+    pb_istream_t stream;
+
+    stream.callback = &apdu_read;;
+
+    stream.state = ctx;
+    stream.bytes_left = SIZE_MAX;
+#ifndef PB_NO_ERRMSG
+    stream.errmsg = NULL;
+#endif
+    os_memset(ctx, 0, sizeof(pb_istream_from_apdu_ctx_t));
+
+    ctx->total_received = init_buffer_size;
+    ctx->total_size = total_buffer_size;
+    os_memmove(ctx->data, init_buffer, init_buffer_size);
+    ctx->bytes_stored = init_buffer_size;
+    ctx->read_offset = 0;
+
+#ifdef DEBUG
+    // Set call stack monitoring level to 0
+    G_depth = 0;
+#endif
+
+    return stream;
+}
+
 /*******************************
  * pb_istream_t implementation *
  *******************************/
 
 static bool checkreturn buf_read(pb_istream_t *stream, pb_byte_t *buf, size_t count)
 {
-    PRINTF("read: %d\n", count);
     size_t i;
     const pb_byte_t *source = (const pb_byte_t*)stream->state;
     stream->state = (pb_byte_t*)stream->state + count;
@@ -179,223 +419,6 @@ pb_istream_t pb_istream_from_buffer(const pb_byte_t *buf, size_t bufsize)
 #ifndef PB_NO_ERRMSG
     stream.errmsg = NULL;
 #endif
-    return stream;
-}
-
-#define OFFSET_P1 2
-#define OFFSET_LC 4
-#define OFFSET_DATA 5
-#define P1_FIRST 0x00
-#define P1_NEXT 0x80
-#define MAX_CHUNK_SIZE 100 // is equal to the size of the biggest single element decodable
-#define MAX_FETCH_ATTEMPTS 10
-
-pb_istream_apdu_ctx_t G_pb_istream_ctx;
-
-void decipher_and_store(pb_istream_apdu_ctx_t *state, uint8_t *cipher_buffer_in, uint8_t size){
-
-    uint8_t reminder_buf[CX_AES_BLOCK_SIZE] = {0};
-    uint8_t reminder_bytes = state->bytes_stored - state->bytes_readable;
-
-    //bool is_last_chunk = (state->total_received + size == state->total_size) // Todo: maybe remove the + size?
-
-    if(reminder_bytes + size < CX_AES_BLOCK_SIZE){// && !is_last_chunk){
-        THROW(ERR_NOT_ENOUGH_DATA_FOR_A_BLOCK);
-    }
-
-    // payload of the reminder chunk (CX_AES_BLOCK_SIZE or less)
-    //uint8_t reminder_chunk_size = is_last_chunk ? size + reminder_bytes: CX_AES_BLOCK_SIZE;
-
-    os_memcpy(reminder_buf, state->data + state->bytes_readable, reminder_bytes);
-    os_memcpy(reminder_buf + reminder_bytes, cipher_buffer_in, CX_AES_BLOCK_SIZE - reminder_bytes);
-    size -= CX_AES_BLOCK_SIZE - reminder_bytes;
-    cipher_buffer_in += CX_AES_BLOCK_SIZE - reminder_bytes;
-
-    uint8_t* cleartext_buffer_out = state->data + state->bytes_readable;
-
-    cx_aes_iv(&(state->aes_cbc.sessionEnc),
-            CX_LAST | CX_DECRYPT | CX_PAD_NONE | CX_CHAIN_CBC,
-            state->aes_cbc.iv,
-            sizeof(state->aes_cbc.iv),
-            reminder_buf,
-            CX_AES_BLOCK_SIZE,
-            cleartext_buffer_out,
-            CX_AES_BLOCK_SIZE
-            );
-    
-    cleartext_buffer_out += CX_AES_BLOCK_SIZE;
-    
-    // save ciphertext as next IV
-    os_memcpy(state->aes_cbc.iv, reminder_buf, sizeof(state->aes_cbc.iv));
-
-    // update state
-    state->bytes_readable += CX_AES_BLOCK_SIZE;
-    state->bytes_stored += CX_AES_BLOCK_SIZE - reminder_bytes;
-
-    if(state->bytes_readable != state->bytes_stored){
-        PRINTF("FAIL: %d %d\n", state->bytes_readable, state->bytes_stored);
-        THROW(0x6010);
-    }
-    
-    // At this point, we can decipher and append whatever remains %16 and then append the reminder
-
-    if(size > CX_AES_BLOCK_SIZE){
-
-        uint8_t bytes_to_decipher = (size / CX_AES_BLOCK_SIZE) * CX_AES_BLOCK_SIZE;
-
-        cx_aes_iv(&(state->aes_cbc.sessionEnc),
-            CX_LAST | CX_DECRYPT | CX_PAD_NONE | CX_CHAIN_CBC,
-            state->aes_cbc.iv,
-            sizeof(state->aes_cbc.iv),
-            cipher_buffer_in,
-            bytes_to_decipher,
-            cleartext_buffer_out,
-            bytes_to_decipher
-            );
-
-        // save ciphertext's last 16 bytes as next IV
-        os_memcpy(state->aes_cbc.iv, cipher_buffer_in + bytes_to_decipher - CX_AES_BLOCK_SIZE, sizeof(state->aes_cbc.iv));
-    
-        // move buffer pointers forward
-        cleartext_buffer_out += bytes_to_decipher;
-        cipher_buffer_in += bytes_to_decipher;
-
-        // update state
-        state->bytes_readable += bytes_to_decipher;
-        state->bytes_stored += bytes_to_decipher;
-    }
-
-    // append eventual reminder bytes that can't be deciphered yet
-    if(size != 0 && size < CX_AES_BLOCK_SIZE){
-        PRINTF("Copy %d reminder bytes\n", size);
-        os_memcpy(cleartext_buffer_out, cipher_buffer_in, size);
-        state->bytes_stored += size;
-        size = 0;
-    }
-    if(size == 0){
-        PRINTF("exit decipher_and_store\n");
-        return;
-    }
-
-    PRINTF("SHOULDN'T REACH HERE\n");
-}
-
-void fetch_and_decode_new_apdu(pb_istream_apdu_ctx_t *state){
-
-    if(state->total_received == state->total_size){
-        state->last_apdu_has_been_received = true;
-        return;
-    }
-    
-    unsigned int rx;
-    G_io_apdu_buffer[0] = 0x90;
-    G_io_apdu_buffer[1] = 0x00;
-    rx = io_exchange(CHANNEL_APDU, 2);
-
-    if(G_io_apdu_buffer[OFFSET_P1] != P1_NEXT){
-        THROW(ERR_WRONG_PARAMETER);
-    }
-    else if(state->bytes_stored + G_io_apdu_buffer[OFFSET_LC] > sizeof(state->data)){
-        THROW(ERR_BUFFER_TOO_SMALL);
-    }
-
-    state->total_received += G_io_apdu_buffer[OFFSET_LC];
-
-    if (state->total_received > state->total_size)
-    {
-        THROW(ERR_WRONG_MESSAGE_SIZE);
-    }
-
-    //os_memcpy(state->data+state->bytes_stored, G_io_apdu_buffer + OFFSET_DATA, G_io_apdu_buffer[OFFSET_LC]);
-    decipher_and_store(state, G_io_apdu_buffer + OFFSET_DATA, G_io_apdu_buffer[OFFSET_LC]);
-
-    //state->bytes_stored += G_io_apdu_buffer[OFFSET_LC];
-}
-
-bool checkreturn wrapped_apdu_read(pb_istream_t *stream, pb_byte_t *buf, size_t count)
-{
-    if(count > MAX_CHUNK_SIZE){
-        THROW(ERR_PB_READ_IS_TOO_BIG);
-    }
-
-    pb_istream_apdu_ctx_t *state = (pb_istream_apdu_ctx_t*)stream->state;
-
-    uint8_t bytes_not_read_yet = state->bytes_readable-state->read_offset;
-
-    PRINTF("read: %d available: %d stored %d\n", count, bytes_not_read_yet, state->bytes_stored);
-
-    /* not enough data has been received and deciphered, we fetch a new apdu or stop the s
-    tream if the last apdu was already received*/
-    if(count > bytes_not_read_yet){
-        // shift data to the beginning of the buffer
-        os_memmove(state->data, state->data+state->read_offset, state->bytes_stored - state->read_offset);
-        state->bytes_stored = state->bytes_stored - state->read_offset;
-        state->read_offset = 0;
-
-        // loop over apdu fetching while there's not enough bytes stored to feed the amount requested
-        uint8_t fetch_attempts = 0;
-        while(count > state->bytes_readable){
-
-            if (++fetch_attempts > MAX_FETCH_ATTEMPTS)
-            {
-                THROW(ERR_NOT_ENOUGH_BYTES_RECEIVED);
-            }
-
-            if(!state->last_apdu_has_been_received){
-                fetch_and_decode_new_apdu(state);
-            }
-            else
-            {
-                stream->bytes_left = 0;
-                return false;
-            }
-
-        }
-    }
-    
-    // extract data 
-    uint8_t i;
-    const pb_byte_t *source = (const pb_byte_t*)state->data + state->read_offset;
-    state->read_offset += count;
-    
-    if (buf != NULL)
-    {
-        for (i = 0; i < count; i++)
-            buf[i] = source[i];
-    }
-    
-    return true;
-}
-
-
-pb_istream_t pb_istream_from_wrapped_apdu(uint8_t* init_buffer, uint8_t init_buffer_size, uint16_t total_buffer_size)
-{
-    pb_istream_t stream;
-    /* Cast away the const from buf without a compiler error.  We are
-     * careful to use it only in a const manner in the callbacks.
-     */
-    union {
-        void *state;
-        const void *c_state;
-    } state;
-
-    stream.callback = &wrapped_apdu_read;
-
-    state.c_state = &G_pb_istream_ctx;
-    stream.state = state.state;
-    stream.bytes_left = SIZE_MAX;
-#ifndef PB_NO_ERRMSG
-    stream.errmsg = NULL;
-#endif
-
-    os_memset(&G_pb_istream_ctx, 0, sizeof(pb_istream_apdu_ctx_t));
-
-    decipher_and_store((pb_istream_apdu_ctx_t*)stream.state, init_buffer, init_buffer_size);
-    G_pb_istream_ctx.bytes_stored = init_buffer_size;
-    G_pb_istream_ctx.total_received = init_buffer_size;
-    G_pb_istream_ctx.total_size = total_buffer_size;
-    G_pb_istream_ctx.read_offset = 0;
-
     return stream;
 }
 
@@ -533,6 +556,7 @@ bool checkreturn pb_decode_tag(pb_istream_t *stream, pb_wire_type_t *wire_type, 
     
     *tag = temp >> 3;
     *wire_type = (pb_wire_type_t)(temp & 7);
+    
     return true;
 }
 
@@ -615,10 +639,10 @@ bool checkreturn pb_close_string_substream(pb_istream_t *stream, pb_istream_t *s
  * Decode a single field *
  *************************/
 
+pb_type_t type;
+pb_decoder_t func;
 static bool checkreturn decode_static_field(pb_istream_t *stream, pb_wire_type_t wire_type, pb_field_iter_t *iter)
 {
-    pb_type_t type;
-    pb_decoder_t func;
     type = ((const pb_field_t *)PIC(iter->pos))->type;
     func = (pb_decoder_t)PIC(PB_DECODERS[PB_LTYPE(type)]);
                   
@@ -636,30 +660,32 @@ static bool checkreturn decode_static_field(pb_istream_t *stream, pb_wire_type_t
             if (wire_type == PB_WT_STRING
                 && PB_LTYPE(type) <= PB_LTYPE_LAST_PACKABLE)
             {
-                /* Packed array */
-                bool status = true;
-                pb_size_t *size = (pb_size_t*)iter->pSize;
-                pb_istream_t substream;
-                if (!pb_make_string_substream(stream, &substream))
-                    return false;
+                PRINTF("PAAAACCCKKKEEEDDD AARRRRAAAYYYY\n");
+                return false;
+                // /* Packed array */
+                // bool status = true;
+                // pb_size_t *size = (pb_size_t*)iter->pSize;
+                // pb_istream_t substream;
+                // if (!pb_make_string_substream(stream, &substream))
+                //     return false;
                 
-                while (substream.bytes_left > 0 && *size < ((const pb_field_t *)PIC(iter->pos))->array_size)
-                {
-                    void *pItem = (char*)iter->pData + ((const pb_field_t *)PIC(iter->pos))->data_size * (*size);
-                    if (!func(&substream, ((const pb_field_t *)PIC(iter->pos)), pItem))
-                    {
-                        status = false;
-                        break;
-                    }
-                    (*size)++;
-                }
+                // while (substream.bytes_left > 0 && *size < ((const pb_field_t *)PIC(iter->pos))->array_size)
+                // {
+                //     void *pItem = (char*)iter->pData + ((const pb_field_t *)PIC(iter->pos))->data_size * (*size);
+                //     if (!func(&substream, ((const pb_field_t *)PIC(iter->pos)), pItem))
+                //     {
+                //         status = false;
+                //         break;
+                //     }
+                //     (*size)++;
+                // }
 
-                if (substream.bytes_left != 0)
-                    PB_RETURN_ERROR(stream, "array overflow");
-                if (!pb_close_string_substream(stream, &substream))
-                    return false;
+                // if (substream.bytes_left != 0)
+                //     PB_RETURN_ERROR(stream, "array overflow");
+                // if (!pb_close_string_substream(stream, &substream))
+                //     return false;
 
-                return status;
+                // return status;
             }
             else
             {
@@ -724,7 +750,6 @@ static bool checkreturn allocate_field(pb_istream_t *stream, void *pData, size_t
     ptr = pb_realloc(ptr, array_size * data_size);
     if (ptr == NULL)
         PB_RETURN_ERROR(stream, "realloc failed");
-    
     *(void**)pData = ptr;
     return true;
 }
@@ -742,6 +767,7 @@ static void initialize_pointer_field(void *pItem, pb_field_iter_t *iter)
         /* We memset to zero so that any callbacks are set to NULL.
          * Then set any default values. */
         memset(pItem, 0, ((const pb_field_t *)PIC(iter->pos))->data_size);
+
         pb_message_set_to_defaults((const pb_field_t *) ((const pb_field_t *)PIC(iter->pos))->ptr, pItem);
     }
 }
@@ -768,6 +794,10 @@ static bool checkreturn decode_pointer_field(pb_istream_t *stream, pb_wire_type_
             if (PB_LTYPE(type) == PB_LTYPE_SUBMESSAGE &&
                 *(void**)iter->pData != NULL)
             {
+                // if an error has been observed, no need to release memory
+                if(stream->errmsg){
+                    return false;
+                }
                 /* Duplicate field, have to release the old allocation first. */
                 pb_release_single_field(iter);
             }
@@ -813,7 +843,6 @@ static bool checkreturn decode_pointer_field(pb_istream_t *stream, pb_wire_type_
                          * number of remaining entries. Round the division
                          * upwards. */
                         allocated_size += (substream.bytes_left - 1) / ((const pb_field_t *)PIC(iter->pos))->data_size + 1;
-                        
                         if (!allocate_field(&substream, iter->pData, ((const pb_field_t *)PIC(iter->pos))->data_size, allocated_size))
                         {
                             status = false;
@@ -858,6 +887,7 @@ static bool checkreturn decode_pointer_field(pb_istream_t *stream, pb_wire_type_
                 (*size)++;
                 if (!allocate_field(stream, iter->pData, ((const pb_field_t *)PIC(iter->pos))->data_size, *size))
                     return false;
+
             
                 pItem = *(char**)iter->pData + ((const pb_field_t *)PIC(iter->pos))->data_size * (*size - 1);
                 initialize_pointer_field(pItem, iter);
@@ -1029,7 +1059,6 @@ static void pb_field_set_to_default(pb_field_iter_t *iter)
 {
     pb_type_t type;
     type = ((const pb_field_t *)PIC(iter->pos))->type;
-    
     if (PB_LTYPE(type) == PB_LTYPE_EXTENSION)
     {
         pb_extension_t *ext = *(pb_extension_t* const *)iter->pData;
@@ -1080,10 +1109,9 @@ static void pb_field_set_to_default(pb_field_iter_t *iter)
         }
     }
     else if (PB_ATYPE(type) == PB_ATYPE_POINTER)
-    {
+    {       
         /* Initialize the pointer to NULL. */
         *(void**)iter->pData = NULL;
-        
         /* Initialize array count to 0. */
         if (PB_HTYPE(type) == PB_HTYPE_REPEATED ||
             PB_HTYPE(type) == PB_HTYPE_ONEOF)
@@ -1112,12 +1140,15 @@ static void pb_message_set_to_defaults(const pb_field_t fields[], void *dest_str
 /*********************
  * Decode all fields *
  *********************/
-
+#define PB_DECODE_STACK_REQUIREMENT 260
 bool checkreturn pb_decode_noinit(pb_istream_t *stream, const pb_field_t fields[], void *dest_struct)
 {
-    uint32_t fields_seen[(PB_MAX_REQUIRED_FIELDS + 31) / 32] = {0, 0};
-    const uint32_t allbits = ~(uint32_t)0;
-    uint32_t extension_range_start = 0;
+    if(check_stack_overflow(PB_DECODE_STACK_REQUIREMENT))
+        PB_RETURN_ERROR(stream, "not enough stack");
+
+    // uint32_t fields_seen[(PB_MAX_REQUIRED_FIELDS + 31) / 32] = {0, 0};
+    // const uint32_t allbits = ~(uint32_t)0;
+    // uint32_t extension_range_start = 0;
     pb_field_iter_t iter;
     
     /* Return value ignored, as empty message types will be correctly handled by
@@ -1138,27 +1169,27 @@ bool checkreturn pb_decode_noinit(pb_istream_t *stream, const pb_field_t fields[
         if (!pb_field_iter_find(&iter, tag))
         {
             /* No match found, check if it matches an extension. */
-            if (tag >= extension_range_start)
-            {
-                if (!find_extension_field(&iter))
-                    extension_range_start = (uint32_t)-1;
-                else
-                    extension_range_start = ((const pb_field_t*)PIC(iter.pos))->tag;
+            // if (tag >= extension_range_start)
+            // {
+            //     if (!find_extension_field(&iter))
+            //         extension_range_start = (uint32_t)-1;
+            //     else
+            //         extension_range_start = ((const pb_field_t*)PIC(iter.pos))->tag;
                 
-                if (tag >= extension_range_start)
-                {
-                    size_t pos = stream->bytes_left;
+            //     if (tag >= extension_range_start)
+            //     {
+            //         size_t pos = stream->bytes_left;
                 
-                    if (!decode_extension(stream, tag, wire_type, &iter))
-                        return false;
+            //         if (!decode_extension(stream, tag, wire_type, &iter))
+            //             return false;
                     
-                    if (pos != stream->bytes_left)
-                    {
-                        /* The field was handled */
-                        continue;                    
-                    }
-                }
-            }
+            //         if (pos != stream->bytes_left)
+            //         {
+            //             /* The field was handled */
+            //             continue;                    
+            //         }
+            //     }
+            // }
         
             /* No match found, skip data */
             if (!pb_skip_field(stream, wire_type))
@@ -1166,58 +1197,59 @@ bool checkreturn pb_decode_noinit(pb_istream_t *stream, const pb_field_t fields[
             continue;
         }
         
-        if (PB_HTYPE(((const pb_field_t*)PIC(iter.pos))->type) == PB_HTYPE_REQUIRED
-            && iter.required_field_index < PB_MAX_REQUIRED_FIELDS)
-        {
-            uint32_t tmp = ((uint32_t)1 << (iter.required_field_index & 31));
-            fields_seen[iter.required_field_index >> 5] |= tmp;
-        }
+        // if (PB_HTYPE(((const pb_field_t*)PIC(iter.pos))->type) == PB_HTYPE_REQUIRED
+        //     && iter.required_field_index < PB_MAX_REQUIRED_FIELDS)
+        // {
+        //     uint32_t tmp = ((uint32_t)1 << (iter.required_field_index & 31));
+        //     fields_seen[iter.required_field_index >> 5] |= tmp;
+        // }
         
         if (!decode_field(stream, wire_type, &iter))
             return false;
     }
     
     /* Check that all required fields were present. */
-    {
-        /* First figure out the number of required fields by
-         * seeking to the end of the field array. Usually we
-         * are already close to end after decoding.
-         */
-        unsigned req_field_count;
-        pb_type_t last_type;
-        unsigned i;
-        do {
-            req_field_count = iter.required_field_index;
-            last_type = ((const pb_field_t*)PIC(iter.pos))->type;
-        } while (pb_field_iter_next(&iter));
+    // {
+    //     /* First figure out the number of required fields by
+    //      * seeking to the end of the field array. Usually we
+    //      * are already close to end after decoding.
+    //      */
+    //     unsigned req_field_count;
+    //     pb_type_t last_type;
+    //     unsigned i;
+    //     do {
+    //         req_field_count = iter.required_field_index;
+    //         last_type = ((const pb_field_t*)PIC(iter.pos))->type;
+    //     } while (pb_field_iter_next(&iter));
         
-        /* Fixup if last field was also required. */
-        if (PB_HTYPE(last_type) == PB_HTYPE_REQUIRED && ((const pb_field_t*)PIC(iter.pos))->tag != 0)
-            req_field_count++;
+    //     /* Fixup if last field was also required. */
+    //     if (PB_HTYPE(last_type) == PB_HTYPE_REQUIRED && ((const pb_field_t*)PIC(iter.pos))->tag != 0)
+    //         req_field_count++;
         
-        if (req_field_count > PB_MAX_REQUIRED_FIELDS)
-            req_field_count = PB_MAX_REQUIRED_FIELDS;
+    //     if (req_field_count > PB_MAX_REQUIRED_FIELDS)
+    //         req_field_count = PB_MAX_REQUIRED_FIELDS;
 
-        if (req_field_count > 0)
-        {
-            /* Check the whole words */
-            for (i = 0; i < (req_field_count >> 5); i++)
-            {
-                if (fields_seen[i] != allbits)
-                    PB_RETURN_ERROR(stream, "missing required field");
-            }
+    //     if (req_field_count > 0)
+    //     {
+    //         /* Check the whole words */
+    //         for (i = 0; i < (req_field_count >> 5); i++)
+    //         {
+    //             if (fields_seen[i] != allbits)
+    //                 PB_RETURN_ERROR(stream, "missing required field");
+    //         }
             
-            /* Check the remaining bits (if any) */
-            if ((req_field_count & 31) != 0)
-            {
-                if (fields_seen[req_field_count >> 5] !=
-                    (allbits >> (32 - (req_field_count & 31))))
-                {
-                    PB_RETURN_ERROR(stream, "missing required field");
-                }
-            }
-        }
-    }
+    //         /* Check the remaining bits (if any) */
+    //         if ((req_field_count & 31) != 0)
+    //         {
+    //             if (fields_seen[req_field_count >> 5] !=
+    //                 (allbits >> (32 - (req_field_count & 31))))
+    //             {
+    //                 PB_RETURN_ERROR(stream, "missing required field");
+    //             }
+    //         }
+    //     }
+    // }
+
     return true;
 }
 
@@ -1226,11 +1258,12 @@ bool checkreturn pb_decode(pb_istream_t *stream, const pb_field_t fields[], void
     bool status;
     pb_message_set_to_defaults(fields, dest_struct);
     status = pb_decode_noinit(stream, fields, dest_struct);
-    
+/*
 #ifdef PB_ENABLE_MALLOC
     if (!status)
         pb_release(fields, dest_struct);
 #endif
+*/
     return status;
 }
 
@@ -1241,7 +1274,6 @@ bool pb_decode_delimited_noinit(pb_istream_t *stream, const pb_field_t fields[],
 
     if (!pb_make_string_substream(stream, &substream))
         return false;
-
     status = pb_decode_noinit(&substream, fields, dest_struct);
 
     if (!pb_close_string_substream(stream, &substream))
@@ -1275,6 +1307,10 @@ bool pb_decode_nullterminated(pb_istream_t *stream, const pb_field_t fields[], v
  * release it before overwriting with a different one. */
 static bool pb_release_union_field(pb_istream_t *stream, pb_field_iter_t *iter)
 {
+    // if an error has been observed, no need to release memory
+    if(stream->errmsg){
+        return false;
+    }
     pb_size_t old_tag = *(pb_size_t*)iter->pSize; /* Previous which_ value */
     pb_size_t new_tag = ((const pb_field_t *)PIC(iter->pos))->tag; /* New which_ value */
 

@@ -4,12 +4,8 @@
  */
 
 #include "pb_common.h"
-
-#ifdef OS_IO_SEPROXYHAL
 #include "os.h"
-#else
-#define PIC(x) x
-#endif
+
 
 bool pb_field_iter_begin(pb_field_iter_t *iter, const pb_field_t *fields, void *dest_struct)
 {
@@ -19,7 +15,6 @@ bool pb_field_iter_begin(pb_field_iter_t *iter, const pb_field_t *fields, void *
     iter->dest_struct = dest_struct;
     iter->pData = (char*)dest_struct + iter->pos->data_offset;
     iter->pSize = (char*)iter->pData + iter->pos->size_offset;
-    
     return (iter->pos->tag != 0);
 }
 
@@ -100,4 +95,16 @@ bool pb_field_iter_find(pb_field_iter_t *iter, uint32_t tag)
     return false;
 }
 
+extern void _ebss;
 
+//Return true if there is less than MIN_BSS_STACK_GAP bytes available in the stack
+bool check_stack_overflow(uint16_t min_bss_stack_gap){
+    uint32_t stack_top = 0;
+
+    PRINTF("+++++++Stack remaining: CUR STACK ADDR: %p, EBSS: %p, diff: %d\n", &stack_top, &_ebss, ((uintptr_t)&stack_top) - ((uintptr_t)&_ebss));
+    if(((uintptr_t)&stack_top) < (((uintptr_t)&_ebss) + min_bss_stack_gap)){
+        return true;
+    }
+    
+    return false;
+}

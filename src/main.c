@@ -106,44 +106,7 @@ void handleApdu(volatile unsigned int *flags, volatile unsigned int *tx) {
             THROW(0x6E00);
             }
 
-            // reset memory allocation context
-            os_memset(&G_malloc_ctx, 0, sizeof(G_malloc_ctx));
-
             switch (G_io_apdu_buffer[OFFSET_INS]) {
-
-                case 0x0A:
-                {
-                    uint8_t status;
-                    uint8_t first_chunk_size;
-                    uint16_t total_message_size;
-
-                    ledgervault_psd_PsdRequest psd_request = ledgervault_psd_PsdRequest_init_zero;
-
-                    if(G_io_apdu_buffer[OFFSET_P1] != P1_FIRST){
-                        THROW(ERR_WRONG_PARAMETER);
-                    }
-
-                    uint8_t* buffer = vault_operation_prefix_parser(G_io_apdu_buffer, G_io_apdu_buffer[OFFSET_LC], &first_chunk_size, &total_message_size);
-
-                    pb_istream_t stream = pb_istream_from_wrapped_apdu(buffer, first_chunk_size, total_message_size);
-
-                    status = pb_decode(&stream, ledgervault_psd_PsdRequest_fields, &psd_request);
-
-                    if (!status)
-                    {
-                        PRINTF("Decoding failed: %s\n", PB_GET_ERROR(&stream));
-                        THROW(0x6D00);
-                    }
-                    
-                    /* Print the data contained in the message. */
-                    PRINTF("Your lucky number was %.*H!\n", 32, psd_request.challenge);
-                    PRINTF("Your lucky number was %.*H!\n", 65, psd_request.User->confidentialityKey);
-                    PRINTF("Your lucky number was %s!\n", psd_request.User->name);
-
-
-                    THROW(0x9000);
-                    break;
-                }
 
                 case 0x0B:
                 {
@@ -151,11 +114,7 @@ void handleApdu(volatile unsigned int *flags, volatile unsigned int *tx) {
 
                     cx_aes_key_t key;
 
-                    PRINTF("file: main.c - Line #154\n");
-
                     cx_aes_init_key(key_buff, 16, &key);
-
-                    PRINTF("file: main.c - Line #156\n");
 
                     uint8_t buffer_l[128] = {0x0a, 0x20, 0xdd, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x00, 0xdd, 0x22, 0x4f, 0x08, 0x01, 0x10, 0x02, 0x1a, 0x06, 0x5a, 0x4f, 0x42, 0x4d, 0x41, 0x4e, 0x2a, 0x41, 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x00, 0x01, 0x02, 0x03, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
                     uint8_t out_buffer[128] = {0};
@@ -472,8 +431,6 @@ __attribute__((section(".boot"))) int main(int arg0) {
                 io_seproxyhal_init();
 
                 nv_app_state_init();
-
-                os_memset(&G_malloc_ctx, 0, sizeof(G_malloc_ctx));
 
                 USB_power(0);
                 USB_power(1);

@@ -45,27 +45,24 @@ struct pb_istream_s
 #endif
 };
 
-#include "cx.h"
 
-struct pb_istream_apdu_ctx_s{
-    uint8_t data[200 + 16]; // size of biggest element * 2 + 16 bytes of maximum padding
-    uint8_t read_offset;
-    uint8_t bytes_stored;
-    uint8_t bytes_readable; // bytes deciphered, counting from data[0]
-    bool last_apdu_has_been_received;
-    uint16_t total_size;
-    uint16_t total_received;
+/* Custom `pb_istream_s.state` structure that handles decoding from apdu streaming */
+#define PB_DECODING_FAILED 0
+// Maximum size of a single serialized pb element
+#define MAX_PB_ELEMENT_SIZE 100
+// Maximum size of an APDU payload. Can be reduced to save some bytes, but then the host has to ensure that it doesn't send APDU payloads bigger than this value.
+#define MAX_APDU_PAYLOAD_SIZE 255 
+typedef struct{
+    uint8_t data[MAX_PB_ELEMENT_SIZE + MAX_APDU_PAYLOAD_SIZE]; // size of the biggest nanopb element serialized + size of an APDU (worst case scenario)
+    uint16_t read_offset; // nanopb read offset, everything before it has been succesfully decoded
+    uint16_t bytes_stored; // number of bytes currently stored in "data"
+    uint16_t total_size; // total size of the nanopb structure being received
+    uint16_t total_received; // number of bytes received since decoding began
 
-    struct aes_cbc_s{
-        cx_aes_key_t sessionMac;
-        cx_aes_key_t sessionEnc;
-        uint8_t iv[16];
-        uint8_t total_deciphered;
-    };
-    struct aes_cbc_s aes_cbc;
-};
-typedef struct pb_istream_apdu_ctx_s pb_istream_apdu_ctx_t;
-extern pb_istream_apdu_ctx_t G_pb_istream_ctx;
+} pb_istream_from_apdu_ctx_t;
+
+
+pb_istream_t apdu_pb_istream(pb_istream_from_apdu_ctx_t* ctx, uint8_t* init_buffer, uint8_t init_buffer_size, uint16_t total_buffer_size);
 
 /***************************
  * Main decoding functions *
@@ -127,7 +124,6 @@ bool pb_decode_nullterminated(pb_istream_t *stream, const pb_field_t fields[], v
 void pb_release(const pb_field_t fields[], void *dest_struct);
 #endif
 
-
 /**************************************
  * Functions for manipulating streams *
  **************************************/
@@ -139,24 +135,10 @@ void pb_release(const pb_field_t fields[], void *dest_struct);
  */
 pb_istream_t pb_istream_from_buffer(const pb_byte_t *buf, size_t bufsize);
 
-// TODO: comment
-pb_istream_t pb_istream_from_wrapped_apdu(uint8_t* init_buffer, uint8_t init_buffer_size, uint16_t total_buffer_size);
-
-
 /* Function to read from a pb_istream_t. You can use this if you need to
  * read some custom header data, or to read data in field callbacks.
  */
 bool pb_read(pb_istream_t *stream, pb_byte_t *buf, size_t count);
-
-// TODO: comment
-bool wrapped_apdu_read(pb_istream_t *stream, pb_byte_t *buf, size_t count);
-#define ERR_PB_READ_IS_TOO_BIG 0x6002
-#define ERR_NOT_ENOUGH_BYTES_RECEIVED 0x6003
-#define ERR_APDU_TOO_LARGE 0x6004
-#define ERR_BUFFER_TOO_SMALL 0x6005
-#define ERR_WRONG_MESSAGE_SIZE 0x6006
-#define ERR_WRONG_PARAMETER 0x6007
-#define ERR_NOT_ENOUGH_DATA_FOR_A_BLOCK 0x6008
 
 /************************************************
  * Helper functions for writing field callbacks *
