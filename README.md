@@ -54,4 +54,4 @@ Be carefull with heap and stack usage, especially on Nano S.
 Instrumentation is available for `pb_decode` and its subcalls. To enable it, uncomment [`this line. `](https://github.com/LedgerHQ/ledger-app-nanopb-boilerplate/blob/master/Makefile#L93).
 
 ## Documentation
-This follows the specification available in the [`api.asc`](https://github.com/LedgerHQ/ledger-app-nanopb/blob/master/doc/api.asc).
+This follows the specification available in the [`api.asc`](https://github.com/LedgerHQ/ledger-app-nanopb-boilerplate/blob/master/doc/api.asc).
