@@ -5,6 +5,9 @@ obj
 dev-env
 src/glyphs.c
 src/glyphs.h
+src/nanopb
+src/nanopb_stubs
+py3_tests/*pb2.py
 .idea
 .vscode
 gitignore
