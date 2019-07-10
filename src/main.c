@@ -17,18 +17,17 @@
 
 #include "utils.h"
 #include "menu.h"
+#include "pb_custom.h"
 #include "pb_decode.h"
 #include "pb_encode.h"
-#include "simple.pb.h"
-#include "init.pb.h"
-#include "psd.pb.h"
+#include "tx.pb.h"
+
 
 unsigned char G_io_seproxyhal_spi_buffer[IO_SEPROXYHAL_BUFFER_SIZE_B];
 
 #define CLA 0xE0
 #define INS_GET_APP_CONFIGURATION 0x01
-#define INS_ENCODE 0x02
-#define INS_DECODE 0x03
+#define INS_DECODE_TX_FROM_APDU 0x02
 
 #define OFFSET_CLA 0
 #define OFFSET_INS 1
@@ -62,39 +61,14 @@ uint8_t *parse_bip32arg(uint8_t *src, uint8_t *bip32NbElem, uint32_t *bip32Path,
     return src + 1 + i * 4;
 }
 
-uint8_t *vault_operation_prefix_parser(uint8_t *apdu_buffer, const uint8_t maxLen, uint8_t* first_chunk_size, uint16_t* total_message_size)
-{
-    //validate_vault_operation_context_t *op = &acquireContext(OPERATION)->u.operation;
-
-    bip32_path_size = 0;
-    os_memset(bip32_path, 0, MAX_BIP32_PATH_SIZE);
-
-    uint8_t* buffer = parse_bip32arg(apdu_buffer+OFFSET_CDATA, &bip32_path_size, bip32_path, MAX_BIP32_PATH_SIZE);
-
-    PRINTF("path: %.*H\n", bip32_path_size*4, bip32_path);
-
-    uint16_t prefixLen = buffer - (G_io_apdu_buffer + OFFSET_CDATA);
-
-    // sanity check, if prefix_parser returned an error
-    // or parsed too long => SW_WRONG_LENGTH
-    if (buffer == NULL || prefixLen > G_io_apdu_buffer[OFFSET_LC])
-    {
-        THROW(0x6700);
+void print_tx(Transaction* tx){
+    for(uint8_t i=0; i < tx->inputs_count; i++){
+        PRINTF("%d: input %d from tx %.*H\n", i, tx->inputs[i].input_index, sizeof(tx->inputs[i].input_tx_hash), tx->inputs[i].input_tx_hash);
     }
-
-    // LC on first APDU has to at least be 2 + parsed prefix length
-    if(G_io_apdu_buffer[OFFSET_LC] < 2 + prefixLen){
-        THROW(0x6700);
+    for(uint8_t i=0; i < tx->outputs_count; i++){
+        PRINTF("%d: %d satoshis sent to  %.*H\n", i, tx->outputs[i].amount, sizeof(tx->outputs[i].dest_addr), tx->outputs[i].dest_addr);
     }
-
-    *total_message_size = buffer[0] << 8 | buffer[1];
-    buffer += 2;
-
-    PRINTF("total pb message size: %d\n", *total_message_size);
-
-    *first_chunk_size = maxLen - ((buffer - apdu_buffer) - OFFSET_CDATA); // TODO: à vérifier
-
-    return buffer;
+    PRINTF("Message stored: %s\n",tx->msg);
 }
  
 void handleApdu(volatile unsigned int *flags, volatile unsigned int *tx) {
@@ -108,29 +82,6 @@ void handleApdu(volatile unsigned int *flags, volatile unsigned int *tx) {
 
             switch (G_io_apdu_buffer[OFFSET_INS]) {
 
-                case 0x0B:
-                {
-                    uint8_t key_buff[16] = {0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
-
-                    cx_aes_key_t key;
-
-                    cx_aes_init_key(key_buff, 16, &key);
-
-                    uint8_t buffer_l[128] = {0x0a, 0x20, 0xdd, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x00, 0xdd, 0x22, 0x4f, 0x08, 0x01, 0x10, 0x02, 0x1a, 0x06, 0x5a, 0x4f, 0x42, 0x4d, 0x41, 0x4e, 0x2a, 0x41, 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x00, 0x01, 0x02, 0x03, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
-                    uint8_t out_buffer[128] = {0};
-                    
-                    cx_aes(&key,
-                            CX_LAST | CX_ENCRYPT | CX_CHAIN_CBC,
-                            buffer_l,
-                            128,
-                            out_buffer,
-                            128
-                            );
-
-                    PRINTF("%.*H\n", 128, out_buffer);
-
-                    break;
-                }
 
                  case INS_GET_APP_CONFIGURATION:
                     G_io_apdu_buffer[0] = (N_storage.dummy_setting_1 ? 0x01 : 0x00);
@@ -143,19 +94,20 @@ void handleApdu(volatile unsigned int *flags, volatile unsigned int *tx) {
                     break;
 
 
-                case INS_DECODE:
+                case INS_DECODE_TX_FROM_APDU:
                 {
                     uint8_t status;
+                    uint16_t total_message_size = G_io_apdu_buffer[OFFSET_CDATA] << 8 | G_io_apdu_buffer[OFFSET_CDATA+1];
 
-                    uint8_t buffer_l[115] = {0x0a, 0x20, 0xdd, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x00, 0xdd, 0x22, 0x4f, 0x08, 0x01, 0x10, 0x02, 0x1a, 0x06, 0x5a, 0x4f, 0x42, 0x4d, 0x41, 0x4e, 0x2a, 0x41, 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x00, 0x01, 0x02, 0x03, 0x04};
+                    pb_istream_from_apdu_ctx_t pb_apdu_ctx;
+
+                    Transaction tx = Transaction_init_default;
                     
-                    ledgervault_psd_PsdRequest psd_request = ledgervault_psd_PsdRequest_init_zero;
-                    
-                    /* Create a stream that will write to our buffer. */
-                    pb_istream_t stream = pb_istream_from_buffer(buffer_l, sizeof(buffer_l));
+                    /* Create an input stream that will deserialize the nanopb message coming from successives APDUs */
+                    pb_istream_t stream = pb_istream_from_apdu(&pb_apdu_ctx, G_io_apdu_buffer + OFFSET_CDATA + 2, G_io_apdu_buffer[OFFSET_LC] - 2, total_message_size);
 
                     /* Now we are ready to decode the message. */
-                    status = pb_decode(&stream, ledgervault_psd_PsdRequest_fields, &psd_request);
+                    status = pb_decode(&stream, Transaction_fields, &tx);
                     /* Check for errors... */
                     if (!status)
                     {
@@ -163,47 +115,12 @@ void handleApdu(volatile unsigned int *flags, volatile unsigned int *tx) {
                         THROW(0x6D00);
                     }
                     
-                    /* Print the data contained in the message. */
-                    PRINTF("Your lucky number was %.*H!\n", 32, psd_request.challenge);
-                    PRINTF("Your lucky number was %.*H!\n", 65, psd_request.User->confidentialityKey);
-                    PRINTF("Your lucky number was %s!\n", psd_request.User->name);
+                    // display the decoded content
+                    print_tx(&tx);
 
                     THROW(0x9000);
                     break;
                 }
-
-
-                case INS_ENCODE:
-                {
-                    uint8_t status;
-
-                    ledgervault_WrapFragment wrap_fragment = ledgervault_WrapFragment_init_zero;
-                    
-                    /* Create a stream that will write to our buffer. */
-                    pb_ostream_t stream = pb_ostream_from_buffer(buffer, sizeof(buffer));
-                    
-                    wrap_fragment.wrapBlob.size = 6;
-                    os_memcpy(wrap_fragment.wrapBlob.bytes, "looool", 6);
-                    uint8_t buffer_l[32] = {0xdd, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x00, 0xdd};
-                    os_memcpy(wrap_fragment.ephemeralPublicKey, buffer_l, 32);
-
-                    /* Now we are ready to encode the message! */
-                    status = pb_encode(&stream, ledgervault_WrapFragment_fields, &wrap_fragment);
-                    message_length = stream.bytes_written;
-                    
-                    PRINTF("Encoded:\n%.*H\n", sizeof(buffer), buffer);
-                            
-                    /* Then just check for any errors.. */
-                    if (!status)
-                    {
-                        PRINTF("Encoding failed: %s\n", PB_GET_ERROR(&stream));
-                        THROW(0x6D00);
-                    }
-                    
-                    THROW(0x9000);
-                    break;
-                }
-                
 
                 default:
                     THROW(0x6D00);

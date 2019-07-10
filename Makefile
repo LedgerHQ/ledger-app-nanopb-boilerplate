@@ -90,6 +90,7 @@ ifneq ($(DEBUG),0)
         else
                 DEFINES   += HAVE_PRINTF PRINTF=screen_printf
         endif
+		#INTRUMENT_FUNCTION += -finstrument-functions
 else
         DEFINES   += PRINTF\(...\)=
 endif
@@ -134,6 +135,11 @@ SDK_SOURCE_PATH  += lib_blewbxx lib_blewbxx_impl
 SDK_SOURCE_PATH  += lib_ux
 endif
 
+prepare: preparenanopb
+
+preparenanopb:
+	./prepare-nanopb.sh
+
 load: all
 	python -m ledgerblue.loadApp $(APP_LOAD_PARAMS)
 
@@ -143,12 +149,6 @@ load-offline: all
 delete:
 	python -m ledgerblue.deleteApp $(COMMON_DELETE_PARAMS)
 
-release: all
-	export APP_LOAD_PARAMS_EVALUATED="$(shell printf '\\"%s\\" ' $(APP_LOAD_PARAMS))"; \
-	cat load-template.sh | envsubst > load.sh
-	chmod +x load.sh
-	tar -zcf nanopb-ledger-app-$(APPVERSION).tar.gz load.sh bin/app.hex
-	rm load.sh
 
 # import generic rules from the sdk
 include $(BOLOS_SDK)/Makefile.rules
@@ -156,6 +156,14 @@ include $(BOLOS_SDK)/Makefile.rules
 #add dependency on custom makefile filename
 dep/%.d: %.c Makefile
 
+# specific rule for pb_decode, instrument each function for stack monitoring
+obj/pb_decode.o: pb_decode.c dep/pb_decode.d
+	@echo "[CC]	  $@"
+#	@echo "[CC - CFLAGS]	  $(CFLAGS)"
+	$(eval PCFLAGS := $(CFLAGS))
+	$(eval CFLAGS += $(INTRUMENT_FUNCTION))
+	$(call log,$(call cc_cmdline,$(INCLUDES_PATH), $(DEFINES),$<,$@))
+	$(eval CFLAGS := $(PCFLAGS))
 
 
 listvariants:
