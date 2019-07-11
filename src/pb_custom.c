@@ -146,7 +146,7 @@ pb_istream_t pb_istream_from_apdu(pb_istream_from_apdu_ctx_t* ctx, uint8_t* init
     ctx->bytes_stored = init_buffer_size;
     ctx->read_offset = 0;
 
-#ifdef DEBUG
+#ifdef HAVE_PRINTF
     // Set call stack monitoring level to 0
     G_depth = 0;
 #endif

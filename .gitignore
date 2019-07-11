@@ -8,6 +8,7 @@ src/glyphs.h
 src/nanopb
 src/nanopb_stubs
 py3_tests/*pb2.py
+py3_tests/__pycache__
 .idea
 .vscode
 gitignore

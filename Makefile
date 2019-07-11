@@ -90,7 +90,6 @@ ifneq ($(DEBUG),0)
         else
                 DEFINES   += HAVE_PRINTF PRINTF=screen_printf
         endif
-		#INTRUMENT_FUNCTION += -finstrument-functions
 else
         DEFINES   += PRINTF\(...\)=
 endif
@@ -156,15 +155,8 @@ include $(BOLOS_SDK)/Makefile.rules
 #add dependency on custom makefile filename
 dep/%.d: %.c Makefile
 
-# specific rule for pb_decode, instrument each function for stack monitoring
-obj/pb_decode.o: pb_decode.c dep/pb_decode.d
-	@echo "[CC]	  $@"
-#	@echo "[CC - CFLAGS]	  $(CFLAGS)"
-	$(eval PCFLAGS := $(CFLAGS))
-	$(eval CFLAGS += $(INTRUMENT_FUNCTION))
-	$(call log,$(call cc_cmdline,$(INCLUDES_PATH), $(DEFINES),$<,$@))
-	$(eval CFLAGS := $(PCFLAGS))
-
+# uncomment to add instrumentation
+#: CFLAGS += -finstrument-functions
 
 listvariants:
 	@echo VARIANTS COIN nanopb

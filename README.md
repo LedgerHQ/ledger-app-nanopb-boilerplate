@@ -51,7 +51,7 @@ Be carefull with heap and stack usage, especially on Nano S.
 
 ## Debugging
 `DEBUG` is set by default [`here.`](https://github.com/LedgerHQ/ledger-app-nanopb-boilerplate/blob/master/Makefile#L85) and enables `PRINTF` ([`see here`](https://ledger.readthedocs.io/en/latest/userspace/debugging.html))
-Instrumentation is available for `pb_decode` and its subcalls. To enable it, uncomment [`this line. `](https://github.com/LedgerHQ/ledger-app-nanopb-boilerplate/blob/master/Makefile#L93).
+Instrumentation is available for `pb_decode` and its subcalls. To enable it, uncomment [`this line. `](https://github.com/LedgerHQ/ledger-app-nanopb-boilerplate/blob/master/Makefile#L159).
 
 ## Documentation
 This follows the specification available in the [`api.asc`](https://github.com/LedgerHQ/ledger-app-nanopb-boilerplate/blob/master/doc/api.asc).
